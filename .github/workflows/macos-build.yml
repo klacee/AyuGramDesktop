@@ -24,10 +24,7 @@ jobs:
           path: Telegram/ThirdParty
           key: thirdparty-macos-${{ hashFiles('Telegram/build/prepare.py') }}
 
-      - name: Prepare ThirdParty
-        run: |
-          cd Telegram
-          python3 build/prepare.py
+
 
       - name: Build AyuGram
         run: |

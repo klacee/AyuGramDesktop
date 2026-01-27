@@ -22,12 +22,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Telegram/ThirdParty
-          key: thirdparty-macos-${{ hashFiles('Telegram/build/prepare/macos.sh') }}
+          key: thirdparty-macos-${{ hashFiles('Telegram/build/prepare/mac.sh') }}
 
       - name: Prepare ThirdParty
         run: |
           cd Telegram
-          bash build/prepare/macos.sh
+          bash build/prepare/mac.sh
 
       - name: Build AyuGram
         run: |

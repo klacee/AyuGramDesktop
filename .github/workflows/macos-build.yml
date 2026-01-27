@@ -21,17 +21,17 @@ jobs:
           fetch-depth: 0
           repository: klacee/AyuGramDesktop
 
-      - name: 安装系统依赖（新增 OpenAL-Soft + 所有必需依赖）
+      - name: 安装系统依赖（补充 rnnoise + 所有必需/可选依赖）
         run: |
           brew update
-          # 关键：添加 openal-soft 安装，这是 OpenAL 的开源实现
-          brew install cmake ninja pkg-config yasm ffmpeg opus qt@6 openssl@3 zlib libpng boost openal-soft
+          # 新增 rnnoise（必需）、minizip（<2.0.0 版本）、openh264 等依赖
+          brew install cmake ninja pkg-config yasm ffmpeg opus qt@6 openssl@3 zlib libpng boost openal-soft rnnoise minizip openh264 libavif libjxl
           brew link --force qt@6
-          # 环境变量追加 openal-soft 路径，让 CMake 能找到
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt6):$(brew --prefix openssl@3):$(brew --prefix zlib):$(brew --prefix boost):$(brew --prefix openal-soft)" >> $GITHUB_ENV
+          # 环境变量追加新增依赖路径
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt6):$(brew --prefix openssl@3):$(brew --prefix zlib):$(brew --prefix boost):$(brew --prefix openal-soft):$(brew --prefix rnnoise):$(brew --prefix minizip):$(brew --prefix openh264):$(brew --prefix libavif):$(brew --prefix libjxl)" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix qt6)/bin:$PATH" >> $GITHUB_ENV
-          echo "LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib -L/opt/homebrew/opt/zlib/lib -L/opt/homebrew/opt/boost/lib -L/opt/homebrew/opt/openal-soft/lib" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/opt/zlib/include -I/opt/homebrew/opt/boost/include -I/opt/homebrew/opt/openal-soft/include" >> $GITHUB_ENV
+          echo "LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib -L/opt/homebrew/opt/zlib/lib -L/opt/homebrew/opt/boost/lib -L/opt/homebrew/opt/openal-soft/lib -L/opt/homebrew/opt/rnnoise/lib -L/opt/homebrew/opt/minizip/lib -L/opt/homebrew/opt/openh264/lib -L/opt/homebrew/opt/libavif/lib -L/opt/homebrew/opt/libjxl/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/opt/zlib/include -I/opt/homebrew/opt/boost/include -I/opt/homebrew/opt/openal-soft/include -I/opt/homebrew/opt/rnnoise/include -I/opt/homebrew/opt/minizip/include -I/opt/homebrew/opt/openh264/include -I/opt/homebrew/opt/libavif/include -I/opt/homebrew/opt/libjxl/include" >> $GITHUB_ENV
 
       - name: 源码安装 ada 依赖
         run: |

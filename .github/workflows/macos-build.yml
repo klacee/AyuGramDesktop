@@ -1,4 +1,4 @@
-name: Build AyuGram macOS (arm64)
+name: Build AyuGram macOS
 
 on:
   workflow_dispatch:
@@ -12,26 +12,32 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
-
-      # 🔴 关键修复：强制拉齐所有 submodules（包括嵌套）
-      - name: Update submodules
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive
 
       - name: Install dependencies
         run: |
           brew update
-          brew install cmake ninja python pkg-config qt ffmpeg
+          brew install \
+            cmake \
+            ninja \
+            python \
+            pkg-config \
+            qt@6 \
+            ffmpeg
+
+          echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
+
+      - name: Prepare ThirdParty
+        run: |
+          cd Telegram
+          python3 build/prepare/prepare.py
 
       - name: Configure build
         run: |
           mkdir build
           cd build
-          cmake .. -G Ninja \
-            -D CMAKE_BUILD_TYPE=Release \
-            -D CMAKE_OSX_ARCHITECTURES=arm64
+          cmake ../Telegram -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64
 
       - name: Build AyuGram
         run: |
@@ -41,5 +47,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-macOS-arm64
+          name: AyuGram-macOS
           path: build/*.app

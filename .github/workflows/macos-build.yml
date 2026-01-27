@@ -19,23 +19,21 @@ jobs:
           brew install \
             cmake \
             ninja \
-            python \
+            python@3.11 \
             pkg-config \
-            qt@6 \
+            qt \
             ffmpeg
 
-          echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
-
-      - name: Prepare ThirdParty
+      - name: Prepare Telegram ThirdParty
         run: |
-          cd Telegram
-          python3 build/prepare/prepare.py
+          cd Telegram/build/prepare
+          python3 prepare.py
 
       - name: Configure build
         run: |
           mkdir build
           cd build
-          cmake ../Telegram -G Ninja \
+          cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES=arm64
 

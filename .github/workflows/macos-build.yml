@@ -7,22 +7,23 @@ jobs:
   build-macos:
     runs-on: macos-14
 
-    env:
-      MACOS_ARCH: arm64
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
+
+      # 🔴 关键修复：强制拉齐所有 submodules（包括嵌套）
+      - name: Update submodules
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive
 
       - name: Install dependencies
         run: |
           brew update
           brew install cmake ninja python pkg-config qt ffmpeg
-
-      # ❗ 注意：这里【没有】ThirdParty cache，避免历史炸缓存
-      # 等你第一次成功后，再考虑加 cache
 
       - name: Configure build
         run: |

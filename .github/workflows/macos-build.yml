@@ -23,31 +23,34 @@ jobs:
             python@3.12 \
             qt \
             ffmpeg \
-             meson \
+            meson \
             nasm \
             yasm \
             dav1d
 
-            # ✅ 关键修复点 1：明确告诉 Telegram Qt 在哪
       - name: Setup Qt environment
         run: |
           echo "QT=/opt/homebrew/opt/qt" >> $GITHUB_ENV
-          echo "PATH=/opt/homebrew/opt/qt/bin:$PATH" >> $GITHUB_ENV            
-      # ❗ 关键点：只跑 prepare.py，不注入 ThirdParty
-      - name: Prepare Telegram ThirdParty
+          echo "PATH=/opt/homebrew/opt/qt/bin:$PATH" >> $GITHUB_ENV
+
+      # ✅ 正确入口
+      - name: Prepare Telegram (configure.py)
         run: |
-          python3 Telegram/build/prepare/prepare.py
+          python3 Telegram/configure.py
+
       - name: Configure
         run: |
-          mkdir build
+          mkdir -p build
           cd build
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES=arm64
+
       - name: Build
         run: |
           cd build
           ninja
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

@@ -13,32 +13,39 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install system tools
+      # 1️⃣ 安装依赖（锁 Qt 6.6）
+      - name: Install system dependencies
         run: |
           brew update
+          brew uninstall --ignore-dependencies qt || true
+
           brew install \
             cmake \
             ninja \
             pkg-config \
             python@3.12 \
-            qt \
+            qt@6.6 \
             ffmpeg \
             meson \
             nasm \
             yasm \
             dav1d
 
+      # 2️⃣ 明确 Qt 环境
       - name: Setup Qt environment
         run: |
-          echo "QT=/opt/homebrew/opt/qt" >> $GITHUB_ENV
-          echo "PATH=/opt/homebrew/opt/qt/bin:$PATH" >> $GITHUB_ENV
+          echo "QT=/opt/homebrew/opt/qt@6.6" >> $GITHUB_ENV
+          echo "PATH=/opt/homebrew/opt/qt@6.6/bin:$PATH" >> $GITHUB_ENV
 
-      # ✅ 正确入口
-      - name: Prepare Telegram (configure.py)
+          qmake --version
+
+      # 3️⃣ Telegram 官方配置脚本（就在仓库根目录跑）
+      - name: Configure Telegram
         run: |
           python3 Telegram/configure.py
 
-      - name: Configure
+      # 4️⃣ CMake Configure（根目录）
+      - name: Configure CMake
         run: |
           mkdir -p build
           cd build
@@ -46,11 +53,13 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES=arm64
 
+      # 5️⃣ Build
       - name: Build
         run: |
           cd build
           ninja
 
+      # 6️⃣ 上传产物
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

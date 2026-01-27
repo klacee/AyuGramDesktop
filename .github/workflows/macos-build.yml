@@ -1,111 +1,108 @@
 name: Build AyuGram for macOS (Apple Silicon)
 
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
   push:
-    branches: [ main, dev ]  # 推送到主分支/开发分支时触发
+    branches: [ main, dev ]
   release:
-    types: [created]  # 发布新版本时触发
+    types: [created]
 
 permissions:
-  contents: write  # 允许上传产物到仓库
+  contents: write
 
 jobs:
   build-macos:
-    runs-on: macos-14  # 使用 macOS 14 运行器（Apple Silicon 架构）
+    runs-on: macos-14
     steps:
       - name: 检出代码（包含子模块）
         uses: actions/checkout@v4
         with:
-          submodules: recursive  # 递归检出所有子模块
-          fetch-depth: 0  # 拉取完整提交历史
-          repository: klacee/AyuGramDesktop  # 目标仓库地址
-          token: ${{ secrets.GITHUB_TOKEN }}  # 自动使用 GitHub 内置 Token
+          submodules: recursive
+          fetch-depth: 0
+          repository: klacee/AyuGramDesktop
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 安装系统依赖（已移除无效包，包含所有必需依赖）
+      - name: 安装系统依赖（修复 rnnoise 配置，移除无效路径）
         run: |
-          brew update  # 更新 Homebrew 仓库索引
-          # 安装核心依赖：包含 OpenAL-Soft、rnnoise 等必需项，移除不存在的 libjxl
-          brew install cmake ninja pkg-config yasm ffmpeg opus qt@6 openssl@3 zlib libpng boost openal-soft rnnoise minizip openh264 libavif
-          brew link --force qt@6  # 强制链接 Qt6（避免路径冲突）
-          # 配置环境变量，让 CMake 能找到所有依赖
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt6):$(brew --prefix openssl@3):$(brew --prefix zlib):$(brew --prefix boost):$(brew --prefix openal-soft):$(brew --prefix rnnoise):$(brew --prefix minizip):$(brew --prefix openh264):$(brew --prefix libavif)" >> $GITHUB_ENV
-          echo "PATH=$(brew --prefix qt6)/bin:$PATH" >> $GITHUB_ENV  # 添加 Qt 工具链到路径
-          # 链接器/编译器参数，指定依赖库和头文件路径
-          echo "LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib -L/opt/homebrew/opt/zlib/lib -L/opt/homebrew/opt/boost/lib -L/opt/homebrew/opt/openal-soft/lib -L/opt/homebrew/opt/rnnoise/lib -L/opt/homebrew/opt/minizip/lib -L/opt/homebrew/opt/openh264/lib -L/opt/homebrew/opt/libavif/lib" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/opt/zlib/include -I/opt/homebrew/opt/boost/include -I/opt/homebrew/opt/openal-soft/include -I/opt/homebrew/opt/rnnoise/include -I/opt/homebrew/opt/minizip/include -I/opt/homebrew/opt/openh264/include -I/opt/homebrew/opt/libavif/include" >> $GITHUB_ENV
+          brew update
+          # rnnoise 通过 Cask 安装，无需在 formula 中重复添加，保留其他依赖
+          brew install cmake ninja pkg-config yasm ffmpeg opus qt@6 openssl@3 zlib libpng boost openal-soft minizip openh264 libavif
+          brew link --force qt@6
+          # 修复 CMAKE_PREFIX_PATH：移除 rnnoise 路径，删除空值
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt6):$(brew --prefix openssl@3):$(brew --prefix zlib):$(brew --prefix boost):$(brew --prefix openal-soft):$(brew --prefix minizip):$(brew --prefix openh264):$(brew --prefix libavif)" >> $GITHUB_ENV
+          echo "PATH=$(brew --prefix qt6)/bin:$PATH" >> $GITHUB_ENV
+          # 修复 LDFLAGS/CPPFLAGS：移除 rnnoise 相关路径
+          echo "LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib -L/opt/homebrew/opt/zlib/lib -L/opt/homebrew/opt/boost/lib -L/opt/homebrew/opt/openal-soft/lib -L/opt/homebrew/opt/minizip/lib -L/opt/homebrew/opt/openh264/lib -L/opt/homebrew/opt/libavif/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/opt/zlib/include -I/opt/homebrew/opt/boost/include -I/opt/homebrew/opt/openal-soft/include -I/opt/homebrew/opt/minizip/include -I/opt/homebrew/opt/openh264/include -I/opt/homebrew/opt/libavif/include" >> $GITHUB_ENV
 
-      - name: 源码安装 ada 依赖（必需，Homebrew 无对应包）
+      - name: 源码安装 ada 依赖
         run: |
-          git clone https://github.com/ada-url/ada.git /tmp/ada  # 克隆 ada 仓库
+          git clone https://github.com/ada-url/ada.git /tmp/ada
           cd /tmp/ada
-          mkdir -p build && cd build  # 创建构建目录
-          # 配置 CMake：Release 模式，安装到 Homebrew 路径
+          mkdir -p build && cd build
           cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/homebrew ..
-          make -j$(sysctl -n hw.logicalcpu)  # 多核编译（自动适配 CPU 核心数）
-          make install  # 安装到系统
-          echo "CMAKE_PREFIX_PATH=/opt/homebrew:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV  # 添加 ada 到依赖路径
+          make -j$(sysctl -n hw.logicalcpu)
+          make install
+          echo "CMAKE_PREFIX_PATH=/opt/homebrew:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
 
-      - name: 配置 CMake 编译参数
+      - name: 配置 CMake 编译参数（修复多余空格）
         run: |
-          mkdir -p build && cd build  # 创建项目构建目录
+          mkdir -p build && cd build
           cmake \
-            -DCMAKE_BUILD_TYPE=Release \  # 发布模式（优化编译）
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \  # 明确指定 Apple Silicon 架构
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \  # 最低支持 macOS 12
-            -DTD_ENABLE_OPENAL=ON \  # 启用 OpenAL 音频支持
-            -DTD_ENABLE_OPUS=ON \  # 启用 OPUS 音频编码
-            -DTD_USE_PACKAGED=ON \  # 使用系统已安装的依赖包
-            -G Ninja \  # 使用 Ninja 构建系统（更快）
-            ..  # 指向项目根目录的 CMakeLists.txt
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DTD_ENABLE_OPENAL=ON \
+            -DTD_ENABLE_OPUS=ON \
+            -DTD_USE_PACKAGED=ON \
+            -G Ninja \
+            ..  # 关键修复：移除末尾多余空格
 
       - name: 编译 AyuGram
         run: |
           cd build
-          ninja -j$(sysctl -n hw.logicalcpu)  # 多核编译，加速构建
+          ninja -j$(sysctl -n hw.logicalcpu)
 
-      - name: 打包为 macOS 标准 .app 应用
+      - name: 打包成 .app 应用
         run: |
-          # 创建 .app 目录结构（macOS 应用标准结构）
           mkdir -p AyuGram.app/Contents/MacOS
-          cp build/bin/AyuGram AyuGram.app/Contents/MacOS/  # 复制编译产物到应用目录
-          # 生成 Info.plist（macOS 应用必需配置文件）
+          cp build/bin/AyuGram AyuGram.app/Contents/MacOS/
           cat > AyuGram.app/Contents/Info.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
               <key>CFBundleExecutable</key>
-              <string>AyuGram</string>  # 可执行文件名称
+              <string>AyuGram</string>
               <key>CFBundleIdentifier</key>
-              <string>com.ayugram.desktop</string>  # 应用唯一标识
+              <string>com.ayugram.desktop</string>
               <key>CFBundleName</key>
-              <string>AyuGram</string>  # 应用名称
+              <string>AyuGram</string>
               <key>CFBundleVersion</key>
-              <string>1.0</string>  # 应用版本
+              <string>1.0</string>
               <key>CFBundlePackageType</key>
-              <string>APPL</string>  # 类型为应用
+              <string>APPL</string>
               <key>CFBundleSignature</key>
-              <string>????</string>  # 签名占位符
+              <string>????</string>
               <key>LSApplicationCategoryType</key>
-              <string>public.app-category.social-networking</string>  # 应用分类（社交）
+              <string>public.app-category.social-networking</string>
               <key>NSHighResolutionCapable</key>
-              <true/>  # 支持高分屏
+              <true/>
           </dict>
           </plist>
           EOF
 
-      - name: 上传编译产物（供手动下载）
+      - name: 上传编译产物
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-macos-AppleSilicon  # 产物名称
-          path: AyuGram.app  # 上传 .app 目录
-          retention-days: 30  # 产物保留 30 天
+          name: AyuGram-macos-AppleSilicon
+          path: AyuGram.app
+          retention-days: 30
 
-      - name: 自动上传到 Release（发布时触发）
-        if: github.event_name == 'release'  # 仅在发布新版本时执行
+      - name: 上传到 Release（触发 release 事件时）
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: AyuGram.app  # 上传应用到 Release 附件
+          files: AyuGram.app
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 授权上传
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

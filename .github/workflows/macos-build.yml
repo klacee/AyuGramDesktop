@@ -23,6 +23,9 @@ jobs:
             python@3.12 \
             qt \
             ffmpeg \
+             meson \
+            nasm \
+            yasm \
             dav1d
 
       # ❗ 关键点：只跑 prepare.py，不注入 ThirdParty

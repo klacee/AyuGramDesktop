@@ -1,0 +1,155 @@
+name: Build AyuGram for macOS (Apple Silicon)
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, dev ]
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - name: 检出代码（包含子模块）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          repository: klacee/AyuGramDesktop
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 安装系统依赖（保留其他依赖，rnnoise 若无可用配方则从源码编译并安装）
+        run: |
+          set -e
+          set -o pipefail
+          brew update
+
+          # 安装常用依赖（包含 pkg-config）
+          brew install cmake ninja pkg-config yasm ffmpeg opus qt@6 openssl@3 zlib libpng boost openal-soft minizip openh264 libavif || true
+          brew link --force qt@6 || true
+
+          # 安装或源码构建 rnnoise 到 Homebrew 前缀（/opt/homebrew）
+          HOMEBREW_PREFIX=$(brew --prefix)
+          if brew info rnnoise >/dev/null 2>&1; then
+            echo "Installing rnnoise via Homebrew"
+            brew install rnnoise || true
+          else
+            echo "Homebrew does not have rnnoise formula — building rnnoise from source"
+            rm -rf /tmp/rnnoise
+            git clone https://github.com/xiph/rnnoise.git /tmp/rnnoise
+            cd /tmp/rnnoise
+            mkdir -p build && cd build
+            cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${HOMEBREW_PREFIX}" ..
+            make -j$(sysctl -n hw.logicalcpu)
+            make install
+          fi
+
+          # Ensure pkg-config can find rnnoise: create rnnoise.pc if missing
+          PKGCONFIG_DIR="${HOMEBREW_PREFIX}/lib/pkgconfig"
+          mkdir -p "${PKGCONFIG_DIR}"
+          if [ ! -f "${PKGCONFIG_DIR}/rnnoise.pc" ]; then
+            echo "Creating rnnoise.pc in ${PKGCONFIG_DIR}"
+            cat > "${PKGCONFIG_DIR}/rnnoise.pc" <<'EOF'
+prefix=@HOMEBREW_PREFIX@
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: rnnoise
+Description: RNNoise
+Version: 0.0.0
+Libs: -L${libdir} -lrnnoise
+Cflags: -I${includedir}
+EOF
+            # replace placeholder with actual prefix
+            sed -i '' "s|@HOMEBREW_PREFIX@|${HOMEBREW_PREFIX}|g" "${PKGCONFIG_DIR}/rnnoise.pc"
+          fi
+
+          # 导出常用路径与 pkg-config 路径 供后续步骤和 CMake 使用
+          echo "CMAKE_PREFIX_PATH=${HOMEBREW_PREFIX}/opt/qt@6:${HOMEBREW_PREFIX}/opt/openssl@3:${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}/opt/zlib:${HOMEBREW_PREFIX}/opt/boost:${HOMEBREW_PREFIX}/opt/openal-soft:${HOMEBREW_PREFIX}" >> $GITHUB_ENV
+          echo "PATH=${HOMEBREW_PREFIX}/opt/qt@6/bin:${PATH}" >> $GITHUB_ENV
+          echo "LDFLAGS=-L${HOMEBREW_PREFIX}/opt/openssl@3/lib -L${HOMEBREW_PREFIX}/opt/zlib/lib -L${HOMEBREW_PREFIX}/opt/boost/lib -L${HOMEBREW_PREFIX}/opt/openal-soft/lib -L${HOMEBREW_PREFIX}/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${HOMEBREW_PREFIX}/opt/openssl@3/include -I${HOMEBREW_PREFIX}/opt/zlib/include -I${HOMEBREW_PREFIX}/opt/boost/include -I${HOMEBREW_PREFIX}/opt/openal-soft/include -I${HOMEBREW_PREFIX}/include" >> $GITHUB_ENV
+          # 确保 pkg-config 路径可见
+          echo "PKG_CONFIG_PATH=${HOMEBREW_PREFIX}/lib/pkgconfig:${HOMEBREW_PREFIX}/share/pkgconfig:${PKG_CONFIG_PATH:-}" >> $GITHUB_ENV
+
+      - name: 源码安装 ada 依赖
+        run: |
+          set -e
+          git clone https://github.com/ada-url/ada.git /tmp/ada
+          cd /tmp/ada
+          mkdir -p build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(brew --prefix) ..
+          make -j$(sysctl -n hw.logicalcpu)
+          make install
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+
+      - name: 配置 CMake 编译参数（使用 -S / -B 显式指定源和构建目录）
+        env:
+          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
+        run: |
+          set -e
+          # 使用显式的 -S . -B build 避免 CMake 在错误目录查找 CMakeLists.txt
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DTD_ENABLE_OPENAL=ON \
+            -DTD_ENABLE_OPUS=ON \
+            -DTD_USE_PACKAGED=ON \
+            -DRNNOISE_INCLUDE_DIR=$(brew --prefix)/include \
+            -DRNNOISE_LIBRARY=$(brew --prefix)/lib/librnnoise.dylib \
+            -G Ninja
+
+      - name: 编译 AyuGram
+        run: |
+          set -e
+          cmake --build build -- -j$(sysctl -n hw.logicalcpu)
+
+      - name: 打包成 .app 应用
+        run: |
+          set -e
+          mkdir -p AyuGram.app/Contents/MacOS
+          cp build/bin/AyuGram AyuGram.app/Contents/MacOS/
+          cat > AyuGram.app/Contents/Info.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>AyuGram</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.ayugram.desktop</string>
+              <key>CFBundleName</key>
+              <string>AyuGram</string>
+              <key>CFBundleVersion</key>
+              <string>1.0</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleSignature</key>
+              <string>????</string>
+              <key>LSApplicationCategoryType</key>
+              <string>public.app-category-social-networking</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: 上传编译产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-macos-AppleSilicon
+          path: AyuGram.app
+          retention-days: 30
+
+      - name: 上传到 Release（触发 release 事件时）
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AyuGram.app
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

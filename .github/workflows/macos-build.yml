@@ -1,49 +1,43 @@
 name: Build AyuGram for macOS (Apple Silicon)
 
-# 触发条件：手动触发、push到main分支、创建tag
 on:
-  workflow_dispatch:  # 手动触发（核心）
+  workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
   release:
     types: [created]
 
-# 权限配置（允许上传编译产物）
 permissions:
   contents: write
 
 jobs:
   build-macos:
-    # 指定 Apple Silicon 运行器（macOS 14 适配 M 芯片）
     runs-on: macos-14
-    
     steps:
-      - name: 检出代码（包含所有子模块）
+      - name: 检出代码（包含子模块）
         uses: actions/checkout@v4
         with:
-          submodules: recursive  # 必须拉取子模块（Telegram 依赖）
+          submodules: recursive
           fetch-depth: 0
+          repository: klacee/AyuGramDesktop
 
-      - name: 安装系统依赖
+      - name: 安装系统依赖（适配 macOS）
         run: |
-          # 更新 Homebrew 并安装编译依赖
           brew update
-          brew install cmake ninja pkg-config yasm libva libvdpau ffmpeg opus qt@6 openssl@3
-          # 链接 Qt6 到系统路径（避免编译找不到）
+          brew install cmake ninja pkg-config yasm ffmpeg opus qt@6 openssl@3 zlib libpng
           brew link --force qt@6
-          # 配置环境变量（让 CMake 找到 Qt）
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt6)" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt6):$(brew --prefix openssl@3):$(brew --prefix zlib)" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix qt6)/bin:$PATH" >> $GITHUB_ENV
+          echo "LDFLAGS=-L$(brew --prefix openssl@3)/lib -L$(brew --prefix zlib)/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I$(brew --prefix openssl@3)/include -I$(brew --prefix zlib)/include" >> $GITHUB_ENV
 
       - name: 配置编译参数
         run: |
-          # 创建构建目录
           mkdir -p build && cd build
-          # CMake 配置（指定 arm64 架构，适配 Apple Silicon）
           cmake \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \  # 最低支持 macOS 12
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
             -DTD_ENABLE_OPENAL=ON \
             -DTD_ENABLE_OPUS=ON \
             -DTD_USE_PACKAGED=ON \
@@ -52,16 +46,13 @@ jobs:
 
       - name: 编译 AyuGram
         run: |
-          # 进入构建目录执行编译（-j 自动使用多核加速）
           cd build
           ninja -j$(sysctl -n hw.logicalcpu)
 
       - name: 打包成 .app 应用
         run: |
-          # 复制编译产物到标准 App 目录结构
           mkdir -p AyuGram.app/Contents/MacOS
           cp build/bin/AyuGram AyuGram.app/Contents/MacOS/
-          # 生成基础 Info.plist（保证 App 可运行）
           cat > AyuGram.app/Contents/Info.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -77,17 +68,23 @@ jobs:
               <string>1.0</string>
               <key>CFBundlePackageType</key>
               <string>APPL</string>
+              <key>CFBundleSignature</key>
+              <string>????</string>
+              <key>LSApplicationCategoryType</key>
+              <string>public.app-category.social-networking</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
           </dict>
           </plist>
           EOF
 
-      - name: 上传编译产物（作为 Artifact）
+      - name: 上传编译产物
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-macOS-AppleSilicon
+          name: AyuGram-macos-AppleSilicon
           path: AyuGram.app
 
-      - name: 可选：上传到 Release（如果触发了 release 事件）
+      - name: 上传到 Release（触发 release 事件时）
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:

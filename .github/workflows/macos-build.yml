@@ -1,4 +1,4 @@
-name: Build AyuGram macOS
+name: Build AyuGram macOS (arm64)
 
 on:
   workflow_dispatch:
@@ -7,8 +7,11 @@ jobs:
   build-macos:
     runs-on: macos-14
 
+    env:
+      MACOS_ARCH: arm64
+
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -18,28 +21,24 @@ jobs:
           brew update
           brew install cmake ninja python pkg-config qt ffmpeg
 
-      - name: Cache ThirdParty
-        uses: actions/cache@v4
-        with:
-          path: Telegram/ThirdParty
-          key: thirdparty-macos-${{ hashFiles('Telegram/build/prepare/mac.sh') }}
+      # ❗ 注意：这里【没有】ThirdParty cache，避免历史炸缓存
+      # 等你第一次成功后，再考虑加 cache
 
-      - name: Prepare ThirdParty
-        run: |
-          cd Telegram
-          bash build/prepare/mac.sh
-
-      - name: Build AyuGram
+      - name: Configure build
         run: |
           mkdir build
           cd build
           cmake .. -G Ninja \
             -D CMAKE_BUILD_TYPE=Release \
             -D CMAKE_OSX_ARCHITECTURES=arm64
+
+      - name: Build AyuGram
+        run: |
+          cd build
           ninja
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-macOS
+          name: AyuGram-macOS-arm64
           path: build/*.app

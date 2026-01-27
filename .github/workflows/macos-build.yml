@@ -1,4 +1,4 @@
-name: Build AyuGram macOS
+name: build-macos
 
 on:
   workflow_dispatch:
@@ -16,13 +16,19 @@ jobs:
       - name: Install system tools
         run: |
           brew update
-          brew install cmake ninja python pkg-config qt ffmpeg dav1d
+          brew install cmake ninja python@3.14 ffmpeg dav1d
 
-      - name: Inject prebuilt dav1d (CRITICAL)
+      # 🔴 关键修正点：正确注入 dav1d（用 dylib，不用 a）
+      - name: Inject system dav1d (CRITICAL)
         run: |
+          DAV1D_PREFIX="$(brew --prefix dav1d)"
+          echo "dav1d prefix = $DAV1D_PREFIX"
+
+          ls "$DAV1D_PREFIX/lib"
+
           mkdir -p Telegram/ThirdParty/dav1d/build
-          cp "$(brew --prefix dav1d)/lib/libdav1d.a" \
-             Telegram/ThirdParty/dav1d/build/libdav1d.a
+          cp "$DAV1D_PREFIX/lib/libdav1d.dylib" \
+             Telegram/ThirdParty/dav1d/build/
 
       - name: Prepare Telegram ThirdParty
         run: |
@@ -34,9 +40,9 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake .. -G Ninja \
+          cmake -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES=arm64
+            ../Telegram
 
       - name: Build
         run: |
@@ -46,5 +52,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-macOS
-          path: build/*.app
+          name: AyuGramDesktop-macOS
+          path: build

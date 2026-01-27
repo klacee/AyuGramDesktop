@@ -1,8 +1,7 @@
-name: build-macos
+name: Build AyuGram macOS
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build-macos:
@@ -14,7 +13,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install dependencies (Homebrew)
+      - name: Install system tools
         run: |
           brew update
           brew install \
@@ -22,25 +21,29 @@ jobs:
             ninja \
             pkg-config \
             python@3.11 \
-            qt@6 \
-            ada
+            qt@6
 
       - name: Prepare Telegram ThirdParty
         run: |
-          cd Telegram/build/prepare
-          python3 prepare.py
+          cd Telegram
+          python3 build/prepare.py
 
-      - name: Configure build
+      - name: Configure
         run: |
-          mkdir -p build
+          mkdir build
           cd build
           cmake .. \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6)" \
-            -DCMAKE_FIND_FRAMEWORK=LAST
+            -DCMAKE_OSX_ARCHITECTURES=arm64
 
-      - name: Build AyuGram
+      - name: Build
         run: |
           cd build
           ninja
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-macOS
+          path: build/*.app

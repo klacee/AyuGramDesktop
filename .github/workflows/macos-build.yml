@@ -1,67 +1,96 @@
-name: Build AyuGram macOS
+name: Build AyuGram for macOS (Apple Silicon)
 
+# 触发条件：手动触发、push到main分支、创建tag
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # 手动触发（核心）
+  push:
+    branches: [ main ]
+  release:
+    types: [created]
+
+# 权限配置（允许上传编译产物）
+permissions:
+  contents: write
 
 jobs:
   build-macos:
+    # 指定 Apple Silicon 运行器（macOS 14 适配 M 芯片）
     runs-on: macos-14
-
+    
     steps:
-      - name: Checkout source
+      - name: 检出代码（包含所有子模块）
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: recursive  # 必须拉取子模块（Telegram 依赖）
+          fetch-depth: 0
 
-      # 1️⃣ 安装依赖（锁 Qt 6.6）
-      - name: Install system dependencies
+      - name: 安装系统依赖
         run: |
+          # 更新 Homebrew 并安装编译依赖
           brew update
-          brew uninstall --ignore-dependencies qt || true
+          brew install cmake ninja pkg-config yasm libva libvdpau ffmpeg opus qt@6 openssl@3
+          # 链接 Qt6 到系统路径（避免编译找不到）
+          brew link --force qt@6
+          # 配置环境变量（让 CMake 找到 Qt）
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt6)" >> $GITHUB_ENV
+          echo "PATH=$(brew --prefix qt6)/bin:$PATH" >> $GITHUB_ENV
 
-          brew install \
-            cmake \
-            ninja \
-            pkg-config \
-            python@3.12 \
-            qt@6.6 \
-            ffmpeg \
-            meson \
-            nasm \
-            yasm \
-            dav1d
-
-      # 2️⃣ 明确 Qt 环境
-      - name: Setup Qt environment
+      - name: 配置编译参数
         run: |
-          echo "QT=/opt/homebrew/opt/qt@6.6" >> $GITHUB_ENV
-          echo "PATH=/opt/homebrew/opt/qt@6.6/bin:$PATH" >> $GITHUB_ENV
-
-          qmake --version
-
-      # 3️⃣ Telegram 官方配置脚本（就在仓库根目录跑）
-      - name: Configure Telegram
-        run: |
-          python3 Telegram/configure.py
-
-      # 4️⃣ CMake Configure（根目录）
-      - name: Configure CMake
-        run: |
-          mkdir -p build
-          cd build
-          cmake .. -G Ninja \
+          # 创建构建目录
+          mkdir -p build && cd build
+          # CMake 配置（指定 arm64 架构，适配 Apple Silicon）
+          cmake \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES=arm64
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \  # 最低支持 macOS 12
+            -DTD_ENABLE_OPENAL=ON \
+            -DTD_ENABLE_OPUS=ON \
+            -DTD_USE_PACKAGED=ON \
+            -G Ninja \
+            ..
 
-      # 5️⃣ Build
-      - name: Build
+      - name: 编译 AyuGram
         run: |
+          # 进入构建目录执行编译（-j 自动使用多核加速）
           cd build
-          ninja
+          ninja -j$(sysctl -n hw.logicalcpu)
 
-      # 6️⃣ 上传产物
-      - name: Upload artifact
+      - name: 打包成 .app 应用
+        run: |
+          # 复制编译产物到标准 App 目录结构
+          mkdir -p AyuGram.app/Contents/MacOS
+          cp build/bin/AyuGram AyuGram.app/Contents/MacOS/
+          # 生成基础 Info.plist（保证 App 可运行）
+          cat > AyuGram.app/Contents/Info.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>AyuGram</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.ayugram.desktop</string>
+              <key>CFBundleName</key>
+              <string>AyuGram</string>
+              <key>CFBundleVersion</key>
+              <string>1.0</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: 上传编译产物（作为 Artifact）
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-macOS
-          path: build/*.app
+          name: AyuGram-macOS-AppleSilicon
+          path: AyuGram.app
+
+      - name: 可选：上传到 Release（如果触发了 release 事件）
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AyuGram.app
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

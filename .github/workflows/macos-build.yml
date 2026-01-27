@@ -1,3 +1,5 @@
+
+
 name: Build AyuGram macOS
 
 on:
@@ -13,7 +15,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install system tools
+      - name: Install system dependencies
         run: |
           brew update
           brew install \
@@ -22,20 +24,27 @@ jobs:
             pkg-config \
             python@3.12 \
             qt \
-            ffmpeg \
-             meson \
+            meson \
             nasm \
             yasm \
-            dav1d
+            dav1d \
+            ffmpeg
 
-      # ❗ 关键点：只跑 prepare.py，不注入 ThirdParty
+            # ✅ 关键修复点 1：明确告诉 Telegram Qt 在哪
+      - name: Setup Qt environment
+        run: |
+          echo "QT=/opt/homebrew/opt/qt" >> $GITHUB_ENV
+          echo "PATH=/opt/homebrew/opt/qt/bin:$PATH" >> $GITHUB_ENV
+
       - name: Prepare Telegram ThirdParty
         run: |
+          cd AyuGramDesktop-dev
           python3 Telegram/build/prepare/prepare.py
 
-      - name: Configure
+      - name: Configure CMake
         run: |
-          mkdir build
+          cd AyuGramDesktop-dev
+          mkdir -p build
           cd build
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -43,11 +52,12 @@ jobs:
 
       - name: Build
         run: |
-          cd build
+          cd AyuGramDesktop-dev/build
           ninja
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-macOS
-          path: build/*.app
+          path: AyuGramDesktop-dev/build/*.app
+

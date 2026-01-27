@@ -16,17 +16,23 @@ jobs:
       - name: Install system tools
         run: |
           brew update
-          brew install cmake ninja python pkg-config qt ffmpeg
+          brew install cmake ninja python pkg-config qt ffmpeg dav1d
 
-      # 👉 关键修复点：prepare.py 的真实路径
+      - name: Inject prebuilt dav1d (CRITICAL)
+        run: |
+          mkdir -p Telegram/ThirdParty/dav1d/build
+          cp "$(brew --prefix dav1d)/lib/libdav1d.a" \
+             Telegram/ThirdParty/dav1d/build/libdav1d.a
+
       - name: Prepare Telegram ThirdParty
         run: |
           cd Telegram
+          export DAV1D_SKIP_BUILD=1
           python3 build/prepare/prepare.py
 
       - name: Configure
         run: |
-          mkdir -p build
+          mkdir build
           cd build
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \

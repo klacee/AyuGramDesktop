@@ -21,16 +21,17 @@ jobs:
           fetch-depth: 0
           repository: klacee/AyuGramDesktop
 
-      - name: 安装系统依赖（适配 macOS，新增 Boost）
+      - name: 安装系统依赖（新增 OpenAL-Soft + 所有必需依赖）
         run: |
           brew update
-          # 新增 boost 依赖安装
-          brew install cmake ninja pkg-config yasm ffmpeg opus qt@6 openssl@3 zlib libpng boost
+          # 关键：添加 openal-soft 安装，这是 OpenAL 的开源实现
+          brew install cmake ninja pkg-config yasm ffmpeg opus qt@6 openssl@3 zlib libpng boost openal-soft
           brew link --force qt@6
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt6):$(brew --prefix openssl@3):$(brew --prefix zlib):$(brew --prefix boost)" >> $GITHUB_ENV
+          # 环境变量追加 openal-soft 路径，让 CMake 能找到
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt6):$(brew --prefix openssl@3):$(brew --prefix zlib):$(brew --prefix boost):$(brew --prefix openal-soft)" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix qt6)/bin:$PATH" >> $GITHUB_ENV
-          echo "LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib -L/opt/homebrew/opt/zlib/lib -L/opt/homebrew/opt/boost/lib" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/opt/zlib/include -I/opt/homebrew/opt/boost/include" >> $GITHUB_ENV
+          echo "LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib -L/opt/homebrew/opt/zlib/lib -L/opt/homebrew/opt/boost/lib -L/opt/homebrew/opt/openal-soft/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/opt/zlib/include -I/opt/homebrew/opt/boost/include -I/opt/homebrew/opt/openal-soft/include" >> $GITHUB_ENV
 
       - name: 源码安装 ada 依赖
         run: |
